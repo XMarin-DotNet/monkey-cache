@@ -17,7 +17,7 @@ namespace MonkeyCache.Tests
 
         string url;
         string json;
-        IBarrel barrel;
+        internal IBarrel barrel;
 
         [TestInitialize]
         public void Setup()
@@ -29,19 +29,18 @@ namespace MonkeyCache.Tests
         }
 
 
-        #region Get Tests
+		#region Get Tests
 
-        [TestMethod]
+		[TestMethod]
         public void GetStringTest()
         {
-
-
             //Saves the cache and pass it a timespan for expiration
             barrel.Add(key: url, data: json, expireIn: TimeSpan.FromDays(1));
 
 
-            var cached = barrel.Get(url);
+            var cached = barrel.Get<string>(url);
             Assert.IsNotNull(cached);
+			Assert.AreEqual(cached, json);
 
         }
 
@@ -56,8 +55,8 @@ namespace MonkeyCache.Tests
 
             var cached = barrel.Get<IEnumerable<Monkey>>(url);
             Assert.IsNotNull(cached);
-
-        }
+			Assert.AreEqual(cached.Count(), monkeys.Count());
+		}
 
 
         [TestMethod]
@@ -71,7 +70,6 @@ namespace MonkeyCache.Tests
 
             var cached = barrel.GetETag(url);
             Assert.AreEqual(cached, tag);
-
         }
 
         [TestMethod]
@@ -79,26 +77,124 @@ namespace MonkeyCache.Tests
         {
             var cached = barrel.GetETag(url);
             Assert.IsNull(cached);
-
         }
 
+		[TestMethod]
+		public void GetKeysTest()
+		{
+			barrel.EmptyAll();
 
-        #endregion
+			var keysToStore = new[] { "One", "Two", "Three" }.OrderBy(x => x).ToArray();
+			foreach (var item in keysToStore)
+			{
+				barrel.Add(key: item, data: item, expireIn: TimeSpan.FromDays(1));
+			}
 
-        #region Add Tests
-        [TestMethod]
-        public void AddStringNullTest()
-        {
+			var test1 = barrel.GetKeys(CacheState.Active | CacheState.Expired);
+
+			var cachedKeys = barrel.GetKeys().OrderBy(x => x).ToArray();
+			Assert.IsNotNull(cachedKeys);
+			Assert.IsTrue(cachedKeys.Any());
+			for (var i = 0; i < cachedKeys.Length; i++)
+			{
+				Assert.AreEqual(keysToStore[i], cachedKeys[i]);
+			}
+		}
+
+		[TestMethod]
+		public void GetAllActiveKeys_Implied_Test()
+		{
+			barrel.EmptyAll();
+
+			barrel.Add("One", "one", TimeSpan.FromDays(-1)); // expired
+			barrel.Add("Two", "two", TimeSpan.FromDays(1));
+			barrel.Add("Three", "three", TimeSpan.FromDays(1));
+
+			var cachedKeys = barrel.GetKeys();
+			Assert.IsNotNull(cachedKeys);
+			Assert.IsTrue(cachedKeys.Any());
+			Assert.AreEqual(2, cachedKeys.Count());
+			Assert.IsTrue(cachedKeys.Contains("Two"));
+			Assert.IsTrue(cachedKeys.Contains("Three"));
+		}
+
+		[TestMethod]
+		public void GetAllActiveKeys_CacheState_Active_Test()
+		{
+			barrel.EmptyAll();
+
+			barrel.Add("One", "one", TimeSpan.FromDays(-1)); // expired
+			barrel.Add("Two", "two", TimeSpan.FromDays(1));
+			barrel.Add("Three", "three", TimeSpan.FromDays(1));
+
+			var cachedKeys = barrel.GetKeys(CacheState.Active);
+			Assert.IsNotNull(cachedKeys);
+			Assert.IsTrue(cachedKeys.Any());
+			Assert.AreEqual(2, cachedKeys.Count());
+			Assert.IsTrue(cachedKeys.Contains("Two"));
+			Assert.IsTrue(cachedKeys.Contains("Three"));
+			Assert.IsFalse(cachedKeys.Contains("One"));
+		}
+
+		[TestMethod]
+		public void GetAllActiveKeys_CacheState_Expired_Test()
+		{
+			barrel.EmptyAll();
+
+			barrel.Add("One", "one", TimeSpan.FromDays(-1)); // expired
+			barrel.Add("Two", "two", TimeSpan.FromDays(1));
+			barrel.Add("Three", "three", TimeSpan.FromDays(1));
+
+			var cachedKeys = barrel.GetKeys(CacheState.Expired);
+			Assert.IsNotNull(cachedKeys);
+			Assert.IsTrue(cachedKeys.Any());
+			Assert.AreEqual(1, cachedKeys.Count());
+			Assert.IsTrue(cachedKeys.Contains("One"));
+			Assert.IsFalse(cachedKeys.Contains("Two"));
+			Assert.IsFalse(cachedKeys.Contains("Three"));
+		}
+
+		[TestMethod]
+		public void GetAllActiveKeys_CacheState_Active_And_Expired_Test()
+		{
+			barrel.EmptyAll();
+
+			barrel.Add("One", "one", TimeSpan.FromDays(-1)); // expired
+			barrel.Add("Two", "two", TimeSpan.FromDays(1));
+			barrel.Add("Three", "three", TimeSpan.FromDays(1));
+
+			var cachedKeys = barrel.GetKeys(CacheState.Active | CacheState.Expired);
+			Assert.IsNotNull(cachedKeys);
+			Assert.IsTrue(cachedKeys.Any());
+			Assert.AreEqual(3, cachedKeys.Count());
+			Assert.IsTrue(cachedKeys.Contains("One"));
+			Assert.IsTrue(cachedKeys.Contains("Two"));
+			Assert.IsTrue(cachedKeys.Contains("Three"));
+		}
 
 
-            //Saves the cache and pass it a timespan for expiration
-            barrel.Add(key: url, data: null, expireIn: TimeSpan.FromDays(1));
+		[TestMethod]
+		public void GetKeysEmptyTest()
+		{
+			barrel.EmptyAll();
+			var cachedKeys = barrel.GetKeys();
+
+			Assert.IsNotNull(cachedKeys);
+			Assert.IsFalse(cachedKeys.Any());
+		}
 
 
-            var cached = barrel.Get(url);
-            Assert.IsNull(cached);
+		#endregion
 
-        }
+		#region Add Tests
+		[TestMethod]
+		[ExpectedException(typeof(ArgumentNullException))]
+		public void AddStringNullTest() => barrel.Add<string>(key: url, data: null, expireIn: TimeSpan.FromDays(1));
+
+		[TestMethod]
+		[ExpectedException(typeof(ArgumentException))]
+		public void AddNullKey() => barrel.Add<string>(key: null, data: json, expireIn: TimeSpan.FromDays(1));
+
 		[TestMethod]
 		public void AddMaxTime()
 		{
@@ -108,7 +204,7 @@ namespace MonkeyCache.Tests
 			barrel.Add(key: url, data: json, expireIn: TimeSpan.MaxValue);
 
 
-			var cached = barrel.Get(url);
+			var cached = barrel.Get<string>(url);
 			Assert.IsNotNull(cached);
 
 		}
@@ -122,7 +218,7 @@ namespace MonkeyCache.Tests
 			barrel.Add(key: url, data: json, expireIn: TimeSpan.MinValue);
 
 
-			var cached = barrel.Get(url);
+			var cached = barrel.Get<string>(url);
 			Assert.IsNotNull(cached);
 
 		}
@@ -136,26 +232,16 @@ namespace MonkeyCache.Tests
             barrel.Add(key: url, data: json, expireIn: TimeSpan.FromDays(1));
 
 
-            var cached = barrel.Get(url);
+            var cached = barrel.Get<string>(url);
             Assert.IsNotNull(cached);
 
         }
 
-        [TestMethod]
-        public void AddNullTest()
-        {
+		[TestMethod]
+		[ExpectedException(typeof(ArgumentNullException))]
+		public void AddNullTest() => barrel.Add<Monkey>(key: url, data: null, expireIn: TimeSpan.FromDays(1));
 
-
-            //Saves the cache and pass it a timespan for expiration
-            barrel.Add<Monkey>(key: url, data: null, expireIn: TimeSpan.FromDays(1));
-
-
-            var cached = barrel.Get<Monkey>(url);
-            Assert.AreEqual(cached, default(Monkey));
-
-        }
-
-        [TestMethod]
+		[TestMethod]
         public void AddTest()
         {
 
@@ -170,32 +256,19 @@ namespace MonkeyCache.Tests
         }
 
 
-        [TestMethod]
-        public void AddTestNull()
-        {
+		[TestMethod]
+		[ExpectedException(typeof(ArgumentNullException))]
+		public void AddTestNull() => barrel.Add<IEnumerable<Monkey>>(key: url, data: null, expireIn: TimeSpan.FromDays(1));
+
+		#endregion
+
+		#region Expiration Tests
+
+		[TestMethod]
+		public void IsExpiredNullTest() => Assert.IsTrue(barrel.IsExpired(url));
 
 
-            //Saves the cache and pass it a timespan for expiration
-            barrel.Add(key: url, data: null, expireIn: TimeSpan.FromDays(1));
-
-
-            var cached = barrel.Get<IEnumerable<Monkey>>(url);
-            Assert.IsNull(cached);
-
-        }
-
-        #endregion
-
-        #region Expiration Tests
-
-        [TestMethod]
-        public void IsExpiredNullTest()
-        {
-            Assert.IsTrue(barrel.IsExpired(url));
-        }
-
-
-        [TestMethod]
+		[TestMethod]
         public void IsExpiredTest()
         {
 
@@ -213,8 +286,6 @@ namespace MonkeyCache.Tests
 		[TestMethod]
 		public void GetDate()
 		{
-
-
 			//Saves the cache and pass it a timespan for expiration
 			barrel.Add(key: url, data: monkeys, expireIn: TimeSpan.FromDays(1));
 
@@ -224,6 +295,7 @@ namespace MonkeyCache.Tests
 			var date = barrel.GetExpiration(url);
 			Assert.IsNotNull(date);
 			Assert.IsTrue(date <= DateTime.UtcNow.Add(TimeSpan.FromDays(1)));
+			Assert.IsTrue(date >= DateTime.UtcNow);
 
 		}
 
@@ -340,76 +412,46 @@ namespace MonkeyCache.Tests
 
 #if DEBUG
 
-		[TestMethod]
-		public void PerformanceTests1()
-		{
-			PerformanceTestRunner(1, true, 1);
-		}
+		//[TestMethod]
+		//public void PerformanceTests1() => PerformanceTestRunner(1, true, 1);
 
-		[TestMethod]
-        public void PerformanceTestsJson1()
-        {
-            PerformanceTestRunner(1, true, 1, true);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsJson1() => PerformanceTestRunner(1, true, 1, true);
 
-        [TestMethod]
-        public void PerformanceTestsJson10()
-        {
-            PerformanceTestRunner(1, true, 10, true);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsJson10() => PerformanceTestRunner(1, true, 10, true);
 
-        [TestMethod]
-        public void PerformanceTestsJson100()
-        {
-            PerformanceTestRunner(1, true, 100, true);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsJson100() => PerformanceTestRunner(1, true, 100, true);
 
-        [TestMethod]
-        public void PerformanceTestsJson1000()
-        {
-            PerformanceTestRunner(1, true, 1000, true);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsJson1000() => PerformanceTestRunner(1, true, 1000, true);
 
-        [TestMethod]
-        public void PerformanceTestsMultiThreadedJson()
-        {
-            PerformanceTestRunner(4, false, 1000, true);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsMultiThreadedJson() => PerformanceTestRunner(4, false, 1000, true);
 
-        [TestMethod]
-        public void PerformanceTestsMultiThreadedWithDuplicatesJson()
-        {
-            PerformanceTestRunner(4, true, 1000, true);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsMultiThreadedWithDuplicatesJson() => PerformanceTestRunner(4, true, 1000, true);
 
 
-        [TestMethod]
-        public void PerformanceTests()
-        {
-            PerformanceTestRunner(1, true, 1000);
-        }
+		//[TestMethod]
+		//public void PerformanceTests() => PerformanceTestRunner(1, true, 1000);
 
-        [TestMethod]
-        public void PerformanceTestsMultiThreaded()
-        {
-            PerformanceTestRunner(4, false, 1000);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsMultiThreaded() => PerformanceTestRunner(4, false, 1000);
 
-        [TestMethod]
-        public void PerformanceTestsMultiThreadedWithDuplicates()
-        {
-            PerformanceTestRunner(4, true, 1000);
-        }
+		//[TestMethod]
+		//public void PerformanceTestsMultiThreadedWithDuplicates() => PerformanceTestRunner(4, true, 1000);
 
 
-        void PerformanceTestRunner (int threads, bool allowDuplicateKeys, int keysPerThread, bool useJson = false)
+		void PerformanceTestRunner (int threads, bool allowDuplicateKeys, int keysPerThread, bool useJson = false)
         {
             var tasks = new List<Task>();
 
             var mainStopwatch = new Stopwatch();
             mainStopwatch.Start();
 
-            for (int i = 0; i < threads; i++) {
+            for (var i = 0; i < threads; i++) {
                 var i2 = i;
 
                 var task = Task.Factory.StartNew(() => {
@@ -434,8 +476,12 @@ namespace MonkeyCache.Tests
                     Debug.WriteLine($"Add ({tId}) took {stopwatch.ElapsedMilliseconds} ms");
                     stopwatch.Restart();
 
-                    foreach (var key in keys) {
-                        var content = barrel.Get(key);
+                    foreach (var key in keys)
+					{
+						if (useJson)
+							barrel.Get<string>(key);
+						else
+							barrel.Get<IEnumerable<Monkey>>(key);
                     }
 
                     stopwatch.Stop();
@@ -474,12 +520,14 @@ namespace MonkeyCache.Tests
             Debug.WriteLine($"Entire Test took {mainStopwatch.ElapsedMilliseconds} ms");
         }
 #endif
-        #endregion
+		#endregion
 
-        [TestCleanup]
-        public void Teardown()
-        {
-            barrel?.EmptyAll();
-        }
-    }
+		[TestCleanup]
+		public void Teardown() => barrel?.EmptyAll();
+	}
+
+	[TestClass]
+	public partial class CustomDirBarrelTests : BarrelTests
+	{
+	}
 }

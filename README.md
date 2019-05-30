@@ -1,25 +1,29 @@
 # 🐒Cache
 Easily cache any data structure for a specific amount of time in any .NET application.
 
-Monkey Cache is comprised of one core package (MonkeyCache) and three providers which reference the core package as a dependency. At least one provider must be installed for Monkey Cache to work and each offer the same API (IBarrel). Depending on your existing application you may already have SQLite or LiteDB installed so these would be your natural choice. A lightweight file based Monkey Cache is also provided.
+Monkey Cache is comprised of one core package (MonkeyCache) and three providers which reference the core package as a dependency. At least one provider must be installed for Monkey Cache to work and each offer the same API (IBarrel). Depending on your existing application you may already have SQLite or LiteDB installed so these would be your natural choice. A lightweight file based Monkey Cache is also provided if you aren't already using one of these options.
 
 Listen to our podcast [Merge Conflict: Episode 76](http://www.mergeconflict.fm/76) for an overview of Monkey Cache and it's creation.
 
 A full breakdown of performance can be found in the performance.xlsx. When dealing with a small amount of records such as inserting under 50 records, the performance difference between each provider is negligible and it is only when dealing with a large amount of records at a single time that you should have to worry about the provider type.
 
+## Azure DevOps
+
+You can follow the full project here: https://dev.azure.com/jamesmontemagno/MonkeyCache
+
 **Build Status**: ![](https://jamesmontemagno.visualstudio.com/_apis/public/build/definitions/00ee1525-d4f2-42b3-ab63-16f5d8b8aba0/6/badge)
 
-**NuGets**
+## NuGets
 
-|Name|Info|
-| ------------------- | :------------------: |
-|🐒 MonkeyCache|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache/)|
-|🙊 MonkeyCache.SQLite|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.SQLite.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache.SQLite/)|
-|🙉 MonkeyCache.LiteDB|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.LiteDB.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache.LiteDB/)|
-|🙈 MonkeyCache.FileStore|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.FileStore.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache.FileStore/)|
-|Development Feed|[MyGet](http://myget.org/F/monkey-cache)|
+|Name|Description|NuGet|
+| ------------------- | -------- | :------------------: |
+|🐒 MonkeyCache|Contains base interfaces and helpers|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache/)|
+|🙊 MonkeyCache.SQLite|A SQLite backing for Monkey Cache|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.SQLite.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache.SQLite/)|
+|🙉 MonkeyCache.LiteDB|A LiteDB backing for Monkey Cache|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.LiteDB.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache.LiteDB/)|
+|🙈 MonkeyCache.FileStore|A local file based backing for Monkey Cache|[![NuGet](https://img.shields.io/nuget/v/MonkeyCache.FileStore.svg?label=NuGet)](https://www.nuget.org/packages/MonkeyCache.FileStore/)|
+|Development Feed| |[MyGet](http://myget.org/F/monkey-cache)|
 
-**Platform Support**
+## Platform Support
 
 Monkey Cache is a .NET Standard 2.0 library, but has some platform specific tweaks for storing data in the correct Cache directory.
 
@@ -35,12 +39,20 @@ Monkey Cache is a .NET Standard 2.0 library, but has some platform specific twea
 
 ## Setup
 
+First, select an implementation of **Monkey Cache** that you would like (LiteDB, SQLite, or FileStore). Install the specific NuGet for that implementation, which will also install the base **MonkeyCache** library. Installing **MonkeyCache** without an implementation will only give you the high level interfaces. 
+
 It is required that you set an ApplicationId for your application so a folder is created specifically for your app on disk. This can be done with a static string on Barrel before calling ANY method:
 
-```
+```csharp
 Barrel.ApplicationId = "your_unique_name_here";
 ```
 
+### LiteDB Encryption
+LiteDB offers [built in encryption support](https://github.com/mbdavid/LiteDB/wiki/Connection-String), which can be enabled with a static string on Barrel before calling ANY method. You must choose this up front before saving any data.
+
+```csharp
+Barrel.EncryptionKey = "SomeKey";
+```
 
 ### What is Monkey Cache?
 
@@ -88,10 +100,10 @@ public async Task<T> GetAsync<T>(string url, int days = 7, bool forceRefresh = f
     var json = string.Empty;
 
     if (!CrossConnectivity.Current.IsConnected)
-        json = Barrel.Current.Get(url);
+        json = Barrel.Current.Get<string>(url);
 
     if (!forceRefresh && !Barrel.Current.IsExpired(url))
-        json = Barrel.Current.Get(url);
+        json = Barrel.Current.Get<string>(url);
 
     try
     {
@@ -100,7 +112,7 @@ public async Task<T> GetAsync<T>(string url, int days = 7, bool forceRefresh = f
             json = await client.GetStringAsync(url);
             Barrel.Current.Add(url, json, TimeSpan.FromDays(days));
         }
-        return await Task.Run(() => JsonConvert.DeserializeObject<T>(json));
+        return JsonConvert.DeserializeObject<T>(json);
     }
     catch (Exception ex)
     {
@@ -152,6 +164,16 @@ Cache will always be stored in the default platform specific location:
 |.NET Core|Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)|
 |ASP.NET Core|Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)|
 |.NET|Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)|
+
+
+#### Persisting Data Longer
+Since the default is to use the Cache directories the platform can clean this up at any time.  If you want to change the base path of where the data is stored you can call the following static method:
+
+```csharp
+BarrelUtils.SetBaseCachePath("Path");
+```
+
+You MUST call this before initializing or accessing anything in the Barrel, and it can only ever be called once else it will throw an `InvalidOperationException`.
 
 
 ### FAQ
